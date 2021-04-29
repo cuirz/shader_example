@@ -3,12 +3,15 @@ Shader "Unlit/NewUnlitShader"
     Properties
     {
         _MainTex ("Texture", 2D) = "white" {}
+        _Gloss ("Gloss", Range(0,1)) = 1
+        _Color ("Color", Color) = (1,1,1,1)
     }
     SubShader
     {
         Tags
         {
             "RenderType"="Opaque"
+            "Queue" = "Geometry"
         }
         //        LOD 100
 
@@ -42,7 +45,8 @@ Shader "Unlit/NewUnlitShader"
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
-            float4 _Gloss;
+            float _Gloss;
+            float4 _Color;
 
             Interpolators vert(MeshData v)
             {
@@ -58,18 +62,28 @@ Shader "Unlit/NewUnlitShader"
             float4 frag(Interpolators i) : SV_Target
             {
                 // diffuse lighting
-                float3 N = i.normal;
+                float3 N = normalize(i.normal);
                 float3 L = _WorldSpaceLightPos0.xyz;
-                float3 diffuseLight = saturate(dot(N, L)) * _LightColor0.xyz;
+                float3 lambert = saturate(dot(N, L));
+                float3 diffuseLight = lambert * _LightColor0.xyz;
                 // return float4(diffuseLight, 1);
 
 
                 // specular lighting
                 float3 V = normalize(_WorldSpaceCameraPos - i.wPos);
-                float3 R = reflect(-L,N);
-                float3 specularLight = saturate(dot(V,R));
-                specularLight = pow( specularLight,_Gloss); // specular exponent
-                return float4(V, 1);
+                float3 R = reflect(-L, N); // users for Phong
+                float3 H = normalize(L + V);
+                float3 specularLight = saturate(dot(H, N)) * (lambert > 0); // Blinn-Phong
+                // float3 specularLight = saturate(dot(V,R));
+                float specularExponent = exp2(_Gloss * 11) + 2;
+                specularLight = pow(specularLight, specularExponent); // specular exponent
+                specularLight *= _LightColor0.xyz;
+
+                // float fresnel = (1 - dot(V, N)) * frac(_Time.y * 2);
+                float fresnel = (1 - dot(V, N)) * (cos(_Time.y * 4) * 0.5 + 0.5);
+
+
+                return float4(diffuseLight * _Color + specularLight + fresnel, 1);
 
 
                 // sample the texture
